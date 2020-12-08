@@ -199,12 +199,7 @@ boolean AsyncWiFiManager::autoConnect(char const *apName, char const *apPassword
 	  DEBUG_WM(F("AutoConnect Try No.:"));
 	  DEBUG_WM(tryNumber);
 
-	  if (connectWifi("", "") == WL_CONNECTED)   {
-		  DEBUG_WM(F("IP Address:"));
-		  DEBUG_WM(WiFi.localIP());
-		  //connected
-		  return true;
-	  }
+	  if (connectWifi("", "") == WL_CONNECTED) return true;
 
 	  if(tryNumber + 1 < maxConnectRetries) {
 
@@ -603,7 +598,11 @@ int AsyncWiFiManager::connectWifi(String ssid, String pass) {
 
   int connRes = waitForConnectResult();
   DEBUG_WM ("Connection result: ");
-  DEBUG_WM ( connRes );
+  DEBUG_WM (connRes);
+  DEBUG_WM ("Connected to network: ");
+  DEBUG_WM (WiFi.SSID());
+  DEBUG_WM(F("IP Address:"));
+  DEBUG_WM(WiFi.localIP());
   //not connected, WPS enabled, no pass - first attempt
 #ifdef NO_EXTRA_4K_HEAP
   if (_tryWPS && connRes != WL_CONNECTED && pass == "") {
@@ -689,7 +688,11 @@ String AsyncWiFiManager::getConfigPortalSSID() {
 void AsyncWiFiManager::resetSettings() {
   DEBUG_WM(F("settings invalidated"));
   DEBUG_WM(F("THIS MAY CAUSE AP NOT TO START UP PROPERLY. YOU NEED TO COMMENT IT OUT AFTER ERASING THE DATA."));
+#if defined(ESP8266)
   WiFi.disconnect(true);
+#else
+  WiFi.disconnect(true, true);
+#endif
   //delay(200);
 }
 void AsyncWiFiManager::setTimeout(unsigned long seconds) {
@@ -741,9 +744,11 @@ void AsyncWiFiManager::handleRoot(AsyncWebServerRequest *request) {
   shouldscan=true;
   scannow= 0 ;
   DEBUG_WM(F("Handle root"));
+  /* TODO: What's captive portal and it's purpose? Skip for now.
   if (captivePortal(request)) { // If captive portal redirect instead of displaying the page.
     return;
   }
+  */
 
   DEBUG_WM(F("Sending Captive Portal"));
 
