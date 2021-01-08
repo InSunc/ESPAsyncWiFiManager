@@ -126,6 +126,8 @@ void AsyncWiFiManager::setupConfigPortal() {
 
   /* Setup web pages: root, wifi config pages, SO captive portal detectors and not found. */
   server->on("/", std::bind(&AsyncWiFiManager::handleRoot, this,std::placeholders::_1)).setFilter(ON_AP_FILTER);
+  server->on("/server", std::bind(&AsyncWiFiManager::handleServer, this,std::placeholders::_1)).setFilter(ON_AP_FILTER);
+  server->on("/serversave", std::bind(&AsyncWiFiManager::handleServerSave, this,std::placeholders::_1)).setFilter(ON_AP_FILTER);
   server->on("/wifi", std::bind(&AsyncWiFiManager::handleWifi, this, std::placeholders::_1,true)).setFilter(ON_AP_FILTER);
   server->on("/0wifi", std::bind(&AsyncWiFiManager::handleWifi, this,std::placeholders::_1, false)).setFilter(ON_AP_FILTER);
   server->on("/wifisave", std::bind(&AsyncWiFiManager::handleWifiSave,this,std::placeholders::_1)).setFilter(ON_AP_FILTER);
@@ -771,6 +773,79 @@ void AsyncWiFiManager::handleRoot(AsyncWebServerRequest *request) {
 
 }
 
+
+
+/** Page to set up server address */
+void AsyncWiFiManager::handleServer(AsyncWebServerRequest *request) {
+  DEBUG_WM(F("Handle server"));
+
+  // Try to get the server address from EEPROM
+  EEPROM.begin(512);
+  int i;
+  char data[100];
+  int index = 0;
+  unsigned char readByte;
+  readByte = EEPROM.read(0);
+
+  // Format of the string in EEPROM is as follows ('L' is start flag): L<server_address>
+  if (readByte == 'L') {
+    while(readByte != '\0' && index < 500) {    
+      readByte = EEPROM.read(index + 1);
+      data[index] = readByte;
+      index++;
+    }
+    data[index] = '\0';
+
+    _serverAddress = String(data);
+  }
+
+  String page = FPSTR(WFM_HTTP_HEAD);
+  page.replace("{v}", "Config ESP");
+  page += FPSTR(HTTP_SCRIPT);
+  page += FPSTR(HTTP_STYLE);
+  page += _customHeadElement;
+  page += FPSTR(HTTP_HEAD_END);
+  page += FPSTR(HTTP_SERVER_FORM);
+  page.replace("{v}", _serverAddress);
+  
+  if (request->hasParam("status")) {
+    String status = "<p>" + request->getParam("status")->value() + "</p>";
+    page.replace("{s}", status);
+    page += FPSTR(HTTP_SCAN_LINK);
+    page.replace("Scan", "Configure WiFi");
+  }
+  else {
+    page.replace("{s}", "");
+  }
+  page += FPSTR(HTTP_END);
+
+  request->send(200, "text/html", page);
+}
+
+/** Handle the WLAN save form and redirect to WLAN config page again */
+void AsyncWiFiManager::handleServerSave(AsyncWebServerRequest *request) {
+  _serverAddress = request->arg("serveraddr").c_str();
+  
+  // Save it to EEPROM
+  int i;
+  EEPROM.begin(512);
+  EEPROM.write(0, 'L');
+  for(i = 0; i < _serverAddress.length(); i++) {
+    EEPROM.write(i + 1, _serverAddress[i]);
+  }
+  EEPROM.write(i + 1, '\0');
+
+  bool successfulCommit = EEPROM.commit();
+
+  if (successfulCommit) {
+    request->redirect("/server?status=Server address successfuly saved to EEPROM");
+  } else {
+    request->redirect("/server?status=Write to EEPROM failed");;
+  }
+}
+
+
+
 /** Wifi config page handler */
 void AsyncWiFiManager::handleWifi(AsyncWebServerRequest *request,boolean scan) {
   shouldscan=true;
@@ -1144,7 +1219,7 @@ void AsyncWiFiManager::setRemoveDuplicateAPs(boolean removeDuplicates) {
 template <typename Generic>
 void AsyncWiFiManager::DEBUG_WM(Generic text) {
   if (_debug) {
-    Serial.print("*WM: ");
+    Serial.print("  #   WM: ");
     Serial.println(text);
   }
 }
@@ -1181,4 +1256,35 @@ String AsyncWiFiManager::toStringIp(IPAddress ip) {
   }
   res += String(((ip >> 8 * 3)) & 0xFF);
   return res;
+}
+
+/** Getter for _serverAddress field */
+String AsyncWiFiManager::getRemoteServerURL() {
+  String result = "";
+  
+  // Try to get the server address from EEPROM
+  EEPROM.begin(512);
+  int i;
+  char data[100];
+  int index = 0;
+  unsigned char readByte;
+  readByte = EEPROM.read(0);
+
+  // Format of the string in EEPROM is as follows ('L' is start flag): L<server_address>
+  if (readByte == 'L') {
+    while(readByte != '\0' && index < 500) {    
+      readByte = EEPROM.read(index + 1);
+      data[index] = readByte;
+      index++;
+    }
+    data[index] = '\0';
+
+    _serverAddress = String(data);
+    result = "http://" + _serverAddress;
+  }
+  else {
+    result = "null";
+  }
+
+  return result;
 }
